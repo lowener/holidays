@@ -1,0 +1,10 @@
+"id","ident","type","name","latitude_deg","longitude_deg","elevation_ft","continent","iso_country","iso_region","municipality","scheduled_service","gps_code","iata_code","local_code","home_link","wikipedia_link","keywords"
+6523,"00A","heliport","Total Rf Heliport",40.07080078125,-74.93360137939453,11,"NA","US","US-PA","Bensalem","no","00A",,"00A",,,
+6524,"00AK","small_airport","Lowell Field",59.94919968,-151.695999146,450,"NA","US","US-AK","Anchor Point","no","00AK",,"00AK",,,
+6525,"00AL","small_airport","Epps Airpark",34.86479949951172,-86.77030181884766,820,"NA","US","US-AL","Harvest","no","00AL",,"00AL",,,
+6526,"00AR","heliport","Newport Hospital & Clinic Heliport",35.608699798583984,-91.25489807128906,237,"NA","US","US-AR","Newport","no","00AR",,"00AR",,,
+6527,"00AZ","small_airport","Cordes Airport",34.305599212646484,-112.16500091552734,3810,"NA","US","US-AZ","Cordes","no","00AZ",,"00AZ",,,
+6528,"00CA","small_airport","Goldstone /Gts/ Airport",35.350498199499995,-116.888000488,3038,"NA","US","US-CA","Barstow","no","00CA",,"00CA",,,
+6529,"00CO","small_airport","Cass Field",40.62220001220703,-104.34400177001953,4830,"NA","US","US-CO","Briggsdale","no","00CO",,"00CO",,,
+6531,"00FA","small_airport","Grass Patch Airport",28.64550018310547,-82.21900177001953,53,"NA","US","US-FL","Bushnell","no","00FA",,"00FA",,,
+6532,"00FD","heliport","Ringhaver Heliport",28.846599578857422,-82.34539794921875,25,"NA","US","US-FL","Riverview","no","00FD",,"00FD",,,
