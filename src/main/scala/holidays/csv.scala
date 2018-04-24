@@ -13,7 +13,12 @@ class Csv(nameCols: List[String], data: List[List[String]]) {
         val colNb = nameCols.indexOf(col)
         if (colNb == -1) {
             println("Column " + col + " not found")
+            Nil
         }
-        val values : List[String] = data:transform(lines => lines(colNb))
+        else {
+            data.foldLeft(List[String]()){
+              (acc, elt) => elt(colNb)::acc
+            }
+          }
     }
 }
