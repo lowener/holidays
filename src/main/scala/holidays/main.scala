@@ -1,7 +1,19 @@
 package holidays
 
 
+object Utils {
+    def printOk(s: String) = {
+        Console.GREEN
+        println(s)
+        Console.WHITE
+    }
 
+    def printKo(s: String) = {
+        Console.RED
+        println(s)
+        Console.WHITE
+    }
+}
 
 object Main {
   // zip((1,2,3), (a,b,c)) => ((1,a), (2,b), (3,c))
@@ -20,10 +32,11 @@ object Main {
         var csvList: List[Csv] = zip(args.toList, csvNames)
                                   .map(x =>  Parse_csv.readCsv(x._1, x._2))
         println("----------------------------------------")
-        csvList(0).getAllCols("iso_region")
-        csvList(0).getLinesMatchingCol("iso_region", "US-FL").map(x => println(x))
+        //csvList(0).getAllCols("iso_region")
+        //csvList(0).getLinesMatchingCol("ident", "ZZZZ").map(x => println(x))
+        //println(csvList(0).getData)
         println("----------------------------------------")
-        println(csvToElastic.toJsonSimple(csvList(0).getCols, csvList(0).getData(0)))
+        //println(csvToElastic.toJsonSimple(csvList(0).getCols, csvList(0).getData(0)))
         csvToElastic.csvToElastic(csvList(0))
       }
   }

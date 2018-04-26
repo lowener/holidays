@@ -10,53 +10,76 @@ object csvToElastic {
      val nameIndex = "holidays"
 
      private def toJsonRec(Keys: List[String], Values: List[String]): String = (Keys, Values) match {
-       case (a::Nil, b::Nil) => "\"" + a + "\":\"" + b + "\"}\n"
+       case (a::Nil, b::Nil) => "\"" + a + "\":\"" + b + "\""
        case (a::tail1, b::tail2) => "\"" + a + "\":\"" + b + "\"," + toJsonRec(tail1, tail2)
-       case (Nil, Nil) => " }\n"
-       case (_,_) => throw new IllegalArgumentException
+       case (Nil, Nil) => ""
+       case (a::Nil,Nil) => "\"" + a + "\":\"\""
+       case (a::tail,Nil) => "\"" + a + "\":\"\"," + toJsonRec(tail, Nil) // Some keys have empty values
+       case (_,_) => throw new IllegalArgumentException // Some values don't have keys?
      }
 
      // Header function for recursion
      def toJsonSimple(Keys: List[String], Values: List[String]): String =
-       "{" + toJsonRec(Keys, Values)
+          "{" + toJsonRec(Keys, Values) + "}\n"
 
-     def createESIndexIfExists(name: String) = {
+     final def createESIndexIfExists(name: String) = {
        val existsResponse = client.execute{indexExists(name)}.await
        if (existsResponse.exists)
           client.execute{createIndex(name)}
      }
+/*
+     def searchByCountries(countryName: String) = {
+       try {
+         // FIXME: Use ES Suggestions
+         val searchCountry = client.execute{
+             search in "holidays"->"countries" termQuery("name", countryName)
+         }
+         if (searchCountry.isEmpty) {
+            printKo("Country " + countryName + " not found")
+         }
+         else {
+
+         }
+
+       } catch {
+         case e: Exception => {
+
+         }
+       }
+     }*/
 
      def csvToElastic(csv: Csv) = {
        val cols = csv.getCols
-       val listJsonData = csv.getData.map(line => toJsonSimple(cols, line))
 
-       createESIndexIfExists(nameIndex)
-       println(listJsonData(0))
-       // val bulkRequest = BulkProcessorBuilder.build(client)
-       //println(List("{\"iso\":\"US\", \"id\": \"2\"}", "{\"iso\":\"FR\", \"id\": \"3\"}"))
        try {
-         val create = client.execute{
-           bulk (
-             /*List("{\"iso\":\"US\", \"id\": \"2\"}", "{\"iso\":\"FR\", \"id\": \"3\"}")
-               .map(json => indexInto("holidays"/csv.getName).source(json))*/
-             listJsonData.map(json => indexInto("holidays"/csv.getName).doc(json))
-           )
-         }.await
+          val listJsonData = csv.getData.map(line => toJsonSimple(cols, line))
 
 
-         println("---- Create Results ----")
-         println(create.toString)
+          createESIndexIfExists(nameIndex)
+           val created = client.execute{
+             bulk (
+               listJsonData.map(json => indexInto("holidays"/csv.getName).doc(json) id json(1))
+             )
+           }.await
+           if (created.errors) {
+               Utils.printKo("---- Error importing " + csv.getName + " to ElasticSearch ----")
+           }
+           else {
+               Utils.printOk("---- Imported " + csv.getName + " to ElasticSearch ( in "  + created.took + " ms.)----")
+           }
        } catch {
-         case e: Exception => println(e)
+           case e: IllegalArgumentException => {
+             Utils.printKo("----- JSON Conversion error for " + csv.getName + " -----")
+           }
+           case e: Exception => {
+               Utils.printKo("---- Error importing " + csv.getName + " to ElasticSearch ----")
+               println(e)
+           }
        }
-
-
 
        /*val resp = client.execute {
          search("holidays") query "24/04/2018"
        }.await*/
-
-       println("---- Search Results ----")
        //println(resp.hits)
        // resp match {
        //      case Left(failure) => println("We failed " + failure.error)
