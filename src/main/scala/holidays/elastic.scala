@@ -10,8 +10,8 @@ object csvToElastic {
      val nameIndex = "holidays"
 
      private def toJsonRec(Keys: List[String], Values: List[String]): String = (Keys, Values) match {
-       case (a::Nil, b::Nil) => "\"" + a + "\":\"" + b + "\""
-       case (a::tail1, b::tail2) => "\"" + a + "\":\"" + b + "\"," + toJsonRec(tail1, tail2)
+       case (a::Nil, b::Nil) => "\"" + a + "\":\"" + b.replaceAllLiterally("\"", "\\\"") + "\""
+       case (a::tail1, b::tail2) => "\"" + a + "\":\"" + b.replaceAllLiterally("\"", "\\\"") + "\"," + toJsonRec(tail1, tail2)
        case (Nil, Nil) => ""
        case (a::Nil,Nil) => "\"" + a + "\":\"\""
        case (a::tail,Nil) => "\"" + a + "\":\"\"," + toJsonRec(tail, Nil) // Some keys have empty values
@@ -48,31 +48,38 @@ object csvToElastic {
        }
      }*/
 
-     def csvToElastic(csv: Csv) = {
-       val cols = csv.getCols
+      def csvToElastic(csv: Csv) = {
+         val cols = csv.getCols
 
-       try {
-          val listJsonData = csv.getData.map(line => toJsonSimple(cols, line))
+         try {
+            val listJsonData = csv.getData.map(line => toJsonSimple(cols, line))
 
 
-          createESIndexIfExists(nameIndex)
-           val created = client.execute{
-             bulk (
-               listJsonData.map(json => indexInto("holidays"/csv.getName).doc(json) id json(1))
-             )
-           }.await
-           if (created.errors) {
-               Utils.printKo("---- Error importing " + csv.getName + " to ElasticSearch ----")
-           }
-           else {
-               Utils.printOk("---- Imported " + csv.getName + " to ElasticSearch ( in "  + created.took + " ms.)----")
-           }
+            createESIndexIfExists(nameIndex)
+            println("Importing " + csv.getName + " " + listJsonData.length + " lines")
+            listJsonData.grouped(15000).foreach(splittedList => {
+                  val created = client.execute{
+                     bulk (
+                        splittedList.map(json => indexInto("holidays"/csv.getName).doc(json) id json(1))
+                     )
+                  }.await
+                  if (created.errors) {
+                     Utils.printKo("---- Error importing " + csv.getName + " to ElasticSearch " + created.took + "ms. ----")
+                     println(created.items.last)
+                     println(created.items.last)
+                  }
+                  else {
+                     Utils.printOk("---- Imported " + csv.getName + " to ElasticSearch ( in "  + created.took + " ms.)----")
+                  }
+               }
+            )
+
        } catch {
            case e: IllegalArgumentException => {
              Utils.printKo("----- JSON Conversion error for " + csv.getName + " -----")
            }
            case e: Exception => {
-               Utils.printKo("---- Error importing " + csv.getName + " to ElasticSearch ----")
+               Utils.printKo("---- Exception importing " + csv.getName + " to ElasticSearch ----")
                println(e)
            }
        }

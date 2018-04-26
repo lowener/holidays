@@ -3,15 +3,11 @@ package holidays
 
 object Utils {
     def printOk(s: String) = {
-        Console.GREEN
-        println(s)
-        Console.WHITE
+        println(Console.GREEN + s)
     }
 
     def printKo(s: String) = {
-        Console.RED
-        println(s)
-        Console.WHITE
+        println(Console.RED + s)
     }
 }
 
