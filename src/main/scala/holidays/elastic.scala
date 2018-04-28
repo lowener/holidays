@@ -13,24 +13,61 @@ object ElasticClient{
 object Elastic {
    import com.sksamuel.elastic4s.http.ElasticDsl._ //Elastic domain Specific Language
 
+   def searchAirportsbyCountry(countryCode: String) = {
+      val searchAirports = ElasticClient.client.execute{
+          search("airports"/"airports").matchQuery("iso_country", countryCode)
+      }.await
+
+      if (searchAirports.isEmpty) {
+         Utils.printKo("No airports found for " + countryCode)
+      }
+      else {
+         println("Found " + Console.BLUE + searchAirports.hits.hits.length + Console.WHITE +" available airports:")
+         searchAirports.hits.hits.map(hit => {
+            val hitMap = hit.sourceAsMap
+            println("\t" + hitMap("name") + ": " + hitMap("type") + " (" + hitMap("municipality") + ")")
+         })
+      }
+   }
+
    // With keyName == Code || Name
-   def searchByCountry(keyName: String, countryName: String) : Option[Map[String, AnyRef]] = {
+   def searchCountry(keyName: String, countryName: String) : Option[Map[String, AnyRef]] = {
       try {
-         // FIXME: Use ES Suggestions
+         // FIXME: Use CompletionSuggestions
+         val mysugg = termSuggestion("TermSugg").field(keyName).text(countryName)
+         //lazy val mysugg2 = completionSuggestion("CompletionSugg").field(keyName).text(countryName)
          val searchCountry = ElasticClient.client.execute{
-             search("countries"/"countries").matchQuery(keyName, countryName)
+             search("countries"/"countries").matchQuery(keyName, countryName).suggestions(mysugg)
          }.await
          if (searchCountry.isEmpty) {
-            Utils.printKo("Country " + countryName + " not found")
+            //println(searchCountry)
+            Utils.printKo("Country " + countryName + " was not found")
+            try { // Suggestion
+               searchCountry.termSuggestion("TermSugg").foreach(termsuggested => {
+                  if (termsuggested._2.options.length > 0)
+                     println("Maybe you meant:")
+                  termsuggested._2.options.foreach(term => println("\t" + term.text))
+               })
+               /*val completionCountry = ElasticClient.client.execute{
+                   search("countries").suggestions(mysugg2)
+               }.await*/
+            } catch { // Try catch is mandatory here, the library offers no way to check if "TermSugg" exists...
+               case e: NullPointerException => {
+                  println("No suggestions available")
+               }
+            }
             None
          }
          else {
             Utils.printOk("Found country " + countryName + " in ElasticSearch")
             Some(searchCountry.hits.hits.head.sourceAsMap)
          }
-
       } catch {
-         case e: Exception => None
+         case e: Exception => {
+            Utils.printKo("Exception: Country " + countryName + " was not found")
+            println(e)
+            None
+         }
       }
    }
 }
@@ -45,8 +82,10 @@ object csvToElastic {
       case (Nil, Nil) => ""
       case (a::Nil,Nil) => "\"" + a + "\":\"\""
       case (a::tail,Nil) => "\"" + a + "\":\"\"," + toJsonRec(tail, Nil) // Some keys have empty values
-      case (Nil,x) =>
+      case (Nil,x) => {
+         println(x)
          throw new IllegalArgumentException // Some values don't have keys?
+      }
    }
 
    // Header function for recursion, returns (id, json)
@@ -55,11 +94,12 @@ object csvToElastic {
 
    def createESIndexIfExists(name: String) : Boolean = {
       val existsResponse = ElasticClient.client.execute{indexExists(name)}.await
-         if (existsResponse.exists) {
+      if (!existsResponse.exists) {
           ElasticClient.client.execute{createIndex(name)}
           true
       }
-      false
+      else
+         false
    }
 
    def csvToElasticGrouped(csv: Csv) = {
@@ -86,6 +126,10 @@ object csvToElastic {
             else
                Utils.printOk("---- Imported " + csv.getName + " to ElasticSearch (" + groupJson.length + " lines in "  + created.took + " ms.)----")
          })
+         /* FIXME: putMapping to update index to add completionSuggestion
+         ElasticClient.client.putMapping(csv.getName,csv.getName){
+               "suggestionField" as
+         }*/
       } catch {
          case e: IllegalArgumentException => {
             Utils.printKo("----- JSON Conversion error for " + csv.getName + " -----")

@@ -24,21 +24,22 @@ object Main {
         println("java holidays.jar AIRPORTS.csv COUNTRIES.csv RUNWAYS.csv")
       }
       else {
-
-        var csvNames = List[String]("airports", "countries", "runways")
-        var csvList: List[Csv] = zip(args.toList, csvNames)
+         var csvNames = List[String]("airports", "countries", "runways")
+         var csvList: List[Csv] = zip(args.toList, csvNames)
                                   .map(x =>  Parse_csv.readCsv(x._1, x._2))
-        //csvList(0).getAllCols("iso_region")
-        //csvList(0).getLinesMatchingCol("ident", "ZZZZ").map(x => println(x))
 
          csvList.foreach(csv => {
             if (csvToElastic.createESIndexIfExists(csv.getName))
                csvToElastic.csvToElasticGrouped(csv)
          })
 
-         csvToElastic.searchByCountries("name", "France")
+         val code = Elastic.searchCountry("name", "france")
+         code match {
+            case Some(countryCode) =>Elastic.searchAirportsbyCountry(countryCode("code").toString)
+            case None => ()
+         }
 
-        ElasticClient.client.close()
+         ElasticClient.client.close()
       }
   }
 }

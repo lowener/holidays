@@ -7,22 +7,37 @@ import org.scalatest.FunSuite
 class testCsv extends FunSuite {
    import com.sksamuel.elastic4s.http.ElasticDsl._
    val brazil = "302791,\"BR\",\"Brazil\",\"SA\",\"http://en.wikipedia.org/wiki/Brazil\",\"Brasil, Brasilian\""
+   val longAirport = "19485,\"KCFS\",\"small_airport\",\"Tuscola Area Airport\",43.458801269531,-83.445503234863,701,\"NA\",\"US\",\"US-MI\",\"Caro\",\"no\",\"KCFS\",\"TZC\",\"CFS\",\"http://www.michigan.gov/aero/0,4533,7-145-61367-277436--,00.html\",\"http://en.wikipedia.org/wiki/Tuscola_Area_Airport\",\"78D\""
+
    val listKeysCountries = List("id", "code", "name", "continent", "wikipedia_link", "keywords")
 
-   test("Parse_csv.toInt") {
-      assert(holidays.Parse_csv.toInt("") === None)
+   test("Parse_csv.toFloat") {
+      assert(holidays.Parse_csv.toFloat("-8.5") === Some(-8.5))
    }
-   test("Parse_csv.toInt2") {
-      assert(holidays.Parse_csv.toInt("4") === Some(4))
+   test("Parse_csv.toFloat2") {
+      assert(holidays.Parse_csv.toFloat("") === None)
    }
-   test("Parse_csv.toIntNeg") {
-      assert(holidays.Parse_csv.toInt("-4445") === Some(-4445))
+   test("Parse_csv.toFloat3") {
+      assert(holidays.Parse_csv.toFloat("4") === Some(4))
+   }
+   test("Parse_csv.toFloatNeg") {
+      assert(holidays.Parse_csv.toFloat("-4445") === Some(-4445))
    }
 
    test("Parse_csv.combineListOnCommas.Brazil") {
       val res = holidays.Parse_csv.combineListOnCommas(brazil.split(",").toList)
       val list = List("302791", "BR", "Brazil", "SA",
          "http://en.wikipedia.org/wiki/Brazil", "Brasil,Brasilian")
+      assert(res === list)
+   }
+
+   test("Parse_csv.combineListOnCommas.longAirport") {
+      val res = holidays.Parse_csv.combineListOnCommas(longAirport.split(",").toList)
+      val list = List("19485","KCFS","small_airport","Tuscola Area Airport",
+         "43.458801269531","-83.445503234863","701","NA","US","US-MI",
+         "Caro","no","KCFS","TZC","CFS",
+         "http://www.michigan.gov/aero/0,4533,7-145-61367-277436--,00.html",
+         "http://en.wikipedia.org/wiki/Tuscola_Area_Airport","78D")
       assert(res === list)
    }
 
@@ -37,13 +52,15 @@ class testCsv extends FunSuite {
    }
 
 
+
+
    test("csvToElasticGrouped.Brazil") {
 
       val listValues = List("302791", "BR", "Brazil", "SA",
          "http://en.wikipedia.org/wiki/Brazil", "Brasil,Brasilian")
       val csv = new holidays.Csv("testholidays", listKeysCountries, List(listValues))
       holidays.csvToElastic.csvToElasticGrouped(csv)
-      Thread.sleep(400) // Wait for ElasticSearch to update its database. 
+      Thread.sleep(400) // Wait for ElasticSearch to update its database.
 
       val searchCountry = holidays.ElasticClient.client.execute{
           search("testholidays/testholidays").matchQuery("name", "Brazil")

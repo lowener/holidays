@@ -4,9 +4,9 @@ import scala.io.Source
 
 object Parse_csv {
 
-   def toInt(s: String) : Option[Int] = {
+   def toFloat(s: String) : Option[Float] = {
       try {
-         Some(s.toInt)
+         Some(s.toFloat)
       } catch {
         case e: Exception => None
       }
@@ -14,7 +14,7 @@ object Parse_csv {
 
     // Combine csv if a value has a comma in it
     def combineListOnCommas(l: List[String], acc: String = ""): List[String] = l match {
-        case x::tail if ((x.startsWith("\"") && x.endsWith("\"")) || toInt(x) != None) =>
+        case x::tail if ((x.startsWith("\"") && x.endsWith("\"")) || (acc.length == 0 && toFloat(x) != None)) =>
                 x.stripPrefix("\"").stripSuffix("\"").trim :: combineListOnCommas(tail)
         case x::tail if (x.startsWith("\"")) =>
            combineListOnCommas(tail, x.stripPrefix("\"").trim + ",")
