@@ -3,11 +3,11 @@ package holidays
 
 object Utils {
     def printOk(s: String) = {
-        println(Console.GREEN + s)
+        println(Console.GREEN + s + Console.WHITE)
     }
 
     def printKo(s: String) = {
-        println(Console.RED + s)
+        println(Console.RED + s + Console.WHITE)
     }
 }
 
@@ -24,16 +24,21 @@ object Main {
         println("java holidays.jar AIRPORTS.csv COUNTRIES.csv RUNWAYS.csv")
       }
       else {
+
         var csvNames = List[String]("airports", "countries", "runways")
         var csvList: List[Csv] = zip(args.toList, csvNames)
                                   .map(x =>  Parse_csv.readCsv(x._1, x._2))
-        println("----------------------------------------")
         //csvList(0).getAllCols("iso_region")
         //csvList(0).getLinesMatchingCol("ident", "ZZZZ").map(x => println(x))
-        //println(csvList(0).getData)
-        println("----------------------------------------")
-        //println(csvToElastic.toJsonSimple(csvList(0).getCols, csvList(0).getData(0)))
-        csvToElastic.csvToElastic(csvList(0))
+
+         csvList.foreach(csv => {
+            if (csvToElastic.createESIndexIfExists(csv.getName))
+               csvToElastic.csvToElasticGrouped(csv)
+         })
+
+         csvToElastic.searchByCountries("name", "France")
+
+        ElasticClient.client.close()
       }
   }
 }

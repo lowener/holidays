@@ -1,17 +1,27 @@
 package holidays
 
 import scala.io.Source
-import collection.breakOut // To avoid copy on Array = >list Conversion
 
 object Parse_csv {
 
+   def toInt(s: String) : Option[Int] = {
+      try {
+         Some(s.toInt)
+      } catch {
+        case e: Exception => None
+      }
+   }
+
     // Combine csv if a value has a comma in it
     def combineListOnCommas(l: List[String], acc: String = ""): List[String] = l match {
-        case x::tail if (x.startsWith("\"") && x.endsWith("\"")) =>
+        case x::tail if ((x.startsWith("\"") && x.endsWith("\"")) || toInt(x) != None) =>
                 x.stripPrefix("\"").stripSuffix("\"").trim :: combineListOnCommas(tail)
-        case x::tail if (x.startsWith("\"")) => combineListOnCommas(tail, x.stripPrefix("\"").trim + ",")
-        case x::tail if (x.endsWith("\"")) => (acc + "," + x.stripSuffix("\"").trim) :: combineListOnCommas(tail)
-        case x::tail => combineListOnCommas(tail, acc + "," + x)
+        case x::tail if (x.startsWith("\"")) =>
+           combineListOnCommas(tail, x.stripPrefix("\"").trim + ",")
+        case x::tail if (x.endsWith("\"")) =>
+           (acc + x.stripSuffix("\"").trim) :: combineListOnCommas(tail)
+        case x::tail =>
+               combineListOnCommas(tail, acc + "," + x)
         case Nil => Nil
     }
 
