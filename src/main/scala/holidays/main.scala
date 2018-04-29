@@ -19,6 +19,45 @@ object Main {
       case (_,_) => throw new IllegalArgumentException
     }
 
+
+    def textUserInterface = {
+      println("Welcome to your holiday planner. What type of information do you want?")
+      println("1. Query")
+      println("2. Report")
+      try {
+         val queryOrReport = readInt
+
+         if (queryOrReport == 1) {
+            println("Query about a country. Do you want to use:")
+            println("1. Country code?")
+            println("2. Country name?")
+            val codeOrName = readInt
+            println("Enter the country")
+            val country : String = readLine
+            val code = codeOrName match {
+               case c if c == 1 => Elastic.searchCountry("code", country)
+               case c if c == 2 => Elastic.searchCountry("name", country)
+               case _=> {
+                  println("Invalid answer")
+                  None
+               }
+            }
+            code match {
+               case Some(countryCode) =>Elastic.searchAirportsByCountry(countryCode("code").toString)
+               case None => ()
+            }
+         }
+         else  if (queryOrReport == 2){
+            println("Not implemented yet")
+         }
+         else {
+            println("Invalid answer")
+         }
+      } catch {
+          case e: NumberFormatException => println("Don't try to trick me!")
+      }
+   }
+
     def main(args: Array[String]) {
       if (args.length != 3){
         println("java holidays.jar AIRPORTS.csv COUNTRIES.csv RUNWAYS.csv")
@@ -32,13 +71,8 @@ object Main {
             if (csvToElastic.createESIndexIfExists(csv.getName))
                csvToElastic.csvToElasticGrouped(csv)
          })
-
-         val code = Elastic.searchCountry("name", "france")
-         code match {
-            case Some(countryCode) =>Elastic.searchAirportsbyCountry(countryCode("code").toString)
-            case None => ()
-         }
-
+         //Elastic.reportAirports
+         textUserInterface
          ElasticClient.client.close()
       }
   }

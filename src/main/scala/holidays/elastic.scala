@@ -2,7 +2,7 @@ package holidays
 import com.sksamuel.elastic4s.http._
 import com.sksamuel.elastic4s.ElasticsearchClientUri
 import com.sksamuel.elastic4s.ElasticImplicits
-
+import scala.reflect.runtime.universe._
 
 object ElasticClient{
    lazy val client = HttpClient(ElasticsearchClientUri("localhost", 9200))
@@ -12,21 +12,83 @@ object ElasticClient{
 
 object Elastic {
    import com.sksamuel.elastic4s.http.ElasticDsl._ //Elastic domain Specific Language
+   def getType[T: TypeTag](obj: T) = typeOf[T]
 
-   def searchAirportsbyCountry(countryCode: String) = {
+   def reportAirports {
+      // "keyword" used to make a text field aggregatable in ElasticSearch
+      val agg = termsAggregation("Aggreg").field("iso_country.keyword")
+      //val agg2 = minAggregation("Aggreg").field("iso_country.keyword")
+      val bestAirports = ElasticClient.client.execute{
+          search("airports"/"airports").aggregations(agg).size(0)
+      }.await
+
+      println("Top 10 countries by airports number:")
+      bestAirports.termsAgg("Aggreg").buckets.foreach(country => {
+         println("\t- " + getCountryNameByCode(country.key) + ": " + country.docCount)
+      })
+
+      /*val worstAirports = ElasticClient.client.execute{
+          search("airports"/"airports").aggregations(agg2).size(0)
+      }.await*/
+   }
+
+   def getCountryNameByCode(countryCode: String)  = {
+      val searchCountry = ElasticClient.client.execute{
+          search("countries"/"countries").matchQuery("code", countryCode).size(1)
+      }.await
+      searchCountry.hits.hits.head.sourceAsMap("name")
+   }
+
+   def searchRunwaysByAirports(airportIdent: String) {
+      val searchRunways = ElasticClient.client.execute{
+          search("runways"/"runways").matchQuery("airport_ident", airportIdent)
+      }.await
+
+      if (searchRunways.isEmpty) {
+         println("\t\tNo runways found for this airport (ident: " + airportIdent +")")
+      }
+      else {
+         println("\tFound " + Console.BLUE + searchRunways.hits.hits.length + Console.WHITE +" available runways:")
+         searchRunways.hits.hits.map(hit => {
+            val hitMap = hit.sourceAsMap
+            println("\t\tid: " + hitMap("id") + ", length: " + hitMap("length_ft") +
+                  " ft., width: " + hitMap("width_ft") + " ft., surface: " + hitMap("surface"))
+         })
+      }
+   }
+
+   def searchAirportsByCountry(countryCode: String, first : Boolean = true, nb : Int = 10): Unit = {
       val searchAirports = ElasticClient.client.execute{
-          search("airports"/"airports").matchQuery("iso_country", countryCode)
+          search("airports"/"airports").matchQuery("iso_country", countryCode).limit(nb)
       }.await
 
       if (searchAirports.isEmpty) {
          Utils.printKo("No airports found for " + countryCode)
       }
       else {
-         println("Found " + Console.BLUE + searchAirports.hits.hits.length + Console.WHITE +" available airports:")
+         // var x = getType(searchAirports.hits)
+         // println(x.decls.mkString("\n"))
          searchAirports.hits.hits.map(hit => {
             val hitMap = hit.sourceAsMap
-            println("\t" + hitMap("name") + ": " + hitMap("type") + " (" + hitMap("municipality") + ")")
+            println("\t" + hitMap("name") + ": " + hitMap("type") + " (" + hitMap("municipality")
+                     + ", ident: " + hitMap("ident") +")")
+            searchRunwaysByAirports(hitMap("ident").toString)
          })
+
+         if (nb < searchAirports.hits.total && first)
+            println("Printed a sample of " + Console.BLUE + searchAirports.hits.size + Console.WHITE
+                + "/" + Console.BLUE + searchAirports.hits.total + Console.WHITE + " airports")
+         if (nb < searchAirports.hits.total && first) {
+            println("How many airports do you want to see?")
+            try {
+               val i = readInt
+               if (i > 0)
+                  searchAirportsByCountry(countryCode, false, i)
+            } catch {
+              case e: NumberFormatException => println("Wrong input")
+            }
+
+         }
       }
    }
 
@@ -37,7 +99,8 @@ object Elastic {
          val mysugg = termSuggestion("TermSugg").field(keyName).text(countryName)
          //lazy val mysugg2 = completionSuggestion("CompletionSugg").field(keyName).text(countryName)
          val searchCountry = ElasticClient.client.execute{
-             search("countries"/"countries").matchQuery(keyName, countryName).suggestions(mysugg)
+             search("countries"/"countries").matchQuery(keyName, countryName)
+                                           .suggestions(mysugg)
          }.await
          if (searchCountry.isEmpty) {
             //println(searchCountry)
@@ -78,7 +141,8 @@ object csvToElastic {
 
    private def toJsonRec(Keys: List[String], Values: List[String]): String = (Keys, Values) match {
       case (a::Nil, b::Nil) => "\"" + a + "\":\"" + b.replaceAllLiterally("\"", "\\\"") + "\""
-      case (a::tail1, b::tail2) => "\"" + a + "\":\"" + b.replaceAllLiterally("\"", "\\\"") + "\"," + toJsonRec(tail1, tail2)
+      case (a::tail1, b::tail2) => "\"" + a + "\":\"" + b.replaceAllLiterally("\"", "\\\"") +
+                                    "\"," + toJsonRec(tail1, tail2)
       case (Nil, Nil) => ""
       case (a::Nil,Nil) => "\"" + a + "\":\"\""
       case (a::tail,Nil) => "\"" + a + "\":\"\"," + toJsonRec(tail, Nil) // Some keys have empty values
@@ -124,7 +188,8 @@ object csvToElastic {
                println(created.items.last)
             }
             else
-               Utils.printOk("---- Imported " + csv.getName + " to ElasticSearch (" + groupJson.length + " lines in "  + created.took + " ms.)----")
+               Utils.printOk("---- Imported " + csv.getName + " to ElasticSearch (" + groupJson.length
+                             + " lines in "  + created.took + " ms.)----")
          })
          /* FIXME: putMapping to update index to add completionSuggestion
          ElasticClient.client.putMapping(csv.getName,csv.getName){

@@ -20,6 +20,13 @@ There are two dependencies:
 
 ## Features
 
-* Unit tests in 'test/scala/holidays'
 * ElasticSearch database
+* Text User Interface
 * Input suggestions on fuzzy names  (e.g. "Frince" => "France")
+* Unit tests in 'test/scala/holidays'
+
+
+## Disclaimer
+
+* According to the official ElasticSearch doc: "Document counts are approximative":
+https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations-bucket-terms-aggregation.html#search-aggregations-bucket-terms-aggregation-approximate-counts
