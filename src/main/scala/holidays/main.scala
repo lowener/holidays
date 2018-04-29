@@ -48,13 +48,14 @@ object Main {
             }
          }
          else  if (queryOrReport == 2){
+            Elastic.reportAirports
             println("Not implemented yet")
          }
          else {
             println("Invalid answer")
          }
       } catch {
-          case e: NumberFormatException => println("Don't try to trick me!")
+          case e: NumberFormatException => println("Error on input!")
       }
    }
 
@@ -71,8 +72,9 @@ object Main {
             if (csvToElastic.createESIndexIfExists(csv.getName))
                csvToElastic.csvToElasticGrouped(csv)
          })
-         //Elastic.reportAirports
+         //Elastic.searchCountry("name", "Frince")
          textUserInterface
+         //Elastic.reportAirports
          ElasticClient.client.close()
       }
   }
