@@ -10,10 +10,14 @@ There are two dependencies:
 
 ### ElasticSearch
 
-* `apt-get install elasticsearch`
+* `apt-get install elasticsearch` for ubuntu
+* `pacman -S elasticsearch` for archlinux
 * Setup elastic search. The default configuration should work
 
 ### Launch
+
+You need elasticsearch's service to be started, on archlinux:
+`systemctl start elasticsearch.service`
 
 `sbt "run airports.csv countries.csv runways.csv"`
 
