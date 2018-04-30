@@ -1,8 +1,6 @@
 package holidays
 
 
-
-
 class Csv(name: String, cols: List[String], data: List[List[String]]) {
     def print = {
       println(cols.length)

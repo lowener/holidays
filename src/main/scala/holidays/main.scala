@@ -49,6 +49,8 @@ object Main {
          }
          else  if (queryOrReport == 2){
             Elastic.reportAirports
+            Elastic.reportTop10MostCommonRunwayLatitude()
+            Elastic.reportRunways()
             println("Not implemented yet")
          }
          else {
