@@ -22,3 +22,8 @@ project/plugins/project/
 
 project/*
 .idea/*
+
+# CSV
+airports.csv
+countries.csv
+runways.csv
