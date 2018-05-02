@@ -39,40 +39,20 @@ object Elastic {
 
   def reportRunways(): Unit = {
     getAllCountryCode().foreach(code => {
-      println(code)
+      var airportsByCountry = ElasticClient.client.execute {
+        search("airports" / "airports").matchQuery("iso_country", code)
+      }.await
+
+      airportsByCountry match {
+        case Left(failure) => Utils.printKo("No airports found for " + code)
+        case Right(airports) => {
+          println("\t- " + code)
+          airports.result.hits.hits.map(airport => {
+            println("\t\t" + airport.sourceAsMap("name"))
+          })
+        }
+      }
     })
-//    val searchAirports = ElasticClient.client.execute{ // FIXME: Use searchScroll
-//      search("airports"/"airports").matchQuery("iso_country", countryCode).limit(nb)
-//    }.await
-//
-//    match {
-//      case Left(failure) => Utils.printKo("No airports found for " + countryCode)
-//      case Right(searchAirports) => {
-//        // var x = getType(searchAirports.hits)
-//        // println(x.decls.mkString("\n"))
-//        searchAirports.result.hits.hits.map(hit => {
-//          val hitMap = hit.sourceAsMap
-//          println("\t" + hitMap("name") + ": " + hitMap("type") + " (" + hitMap("municipality")
-//            + ", ident: " + hitMap("ident") +")")
-//          searchRunwaysByAirports(hitMap("ident").toString)
-//        })
-//
-//        if (nb < searchAirports.result.hits.total && first)
-//          println("Printed a sample of " + Console.BLUE + searchAirports.result.hits.size + Console.WHITE
-//            + "/" + Console.BLUE + searchAirports.result.hits.total + Console.WHITE + " airports")
-//        if (nb < searchAirports.result.hits.total && first) {
-//          println("How many airports do you want to see?")
-//          try {
-//            val i = readInt
-//            if (i > 0)
-//              searchAirportsByCountry(countryCode, false, i)
-//          } catch {
-//            case e: NumberFormatException => println("Wrong input")
-//          }
-//
-//        }
-//      }
-//    }
   }
 
   def reportTop10MostCommonRunwayLatitude(): Unit  = {
