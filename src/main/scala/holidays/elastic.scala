@@ -39,7 +39,7 @@ object Elastic {
 
   def reportRunways(): Unit = {
     getAllCountryCode().foreach(code => {
-//      println(code)
+      println(code)
     })
 //    val searchAirports = ElasticClient.client.execute{ // FIXME: Use searchScroll
 //      search("airports"/"airports").matchQuery("iso_country", countryCode).limit(nb)

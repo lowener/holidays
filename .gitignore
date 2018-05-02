@@ -27,3 +27,6 @@ project/*
 airports.csv
 countries.csv
 runways.csv
+
+# Json
+*.json
