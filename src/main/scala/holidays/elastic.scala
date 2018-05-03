@@ -14,45 +14,40 @@ object Elastic {
   import com.sksamuel.elastic4s.http.ElasticDsl._ //Elastic domain Specific Language
   def getType[T: TypeTag](obj: T) = typeOf[T]
 
-  def getAllCountryCode(): List[String] = {
-    val agg = termsAggregation("Aggreg").field("code.keyword")
-
-    val countriesCode = ElasticClient.client.execute {
-      search("countries"/"countries").aggregations(agg).limit(10000)
+  def getAllCountryNameAndCode(): Array[(String, String)] = {
+    var countriesQuery = ElasticClient.client.execute {
+      search("countries" / "countries").matchAllQuery()
     }.await
-    countriesCode match {
-      case Left(failure) => List("")
-      case Right(commonLat) => {
-        try {
-          commonLat.result
-            .aggregations
-            .data("Aggreg")
-            .asInstanceOf[Map[String, List[Map[String, Any]]]]("buckets")
-            .map(country => country("key").toString)
-        } catch {
-          case e: NullPointerException => println(e)
-            List("")
-        }
+
+    countriesQuery match {
+      case Left(failure) => Array()
+      case Right(countries) => {
+        countries.result.hits.hits.map(country => {
+          val countryMap = country.sourceAsMap
+          (countryMap("code").toString, countryMap("name").toString)
+        })
       }
     }
   }
 
   def reportRunways(): Unit = {
-    getAllCountryCode().foreach(code => {
-      var airportsByCountry = ElasticClient.client.execute {
-        search("airports" / "airports").matchQuery("iso_country", code)
-      }.await
+    getAllCountryNameAndCode().foreach {
+      case (name: String, code: String) => {
+        var airportsByCountry = ElasticClient.client.execute {
+          search("airports" / "airports").matchQuery("iso_country", code)
+        }.await
 
-      airportsByCountry match {
-        case Left(failure) => Utils.printKo("No airports found for " + code)
-        case Right(airports) => {
-          println("\t- " + code)
-          airports.result.hits.hits.map(airport => {
-            println("\t\t" + airport.sourceAsMap("name"))
-          })
+        airportsByCountry match {
+          case Left(failure) => Utils.printKo("No airports found for " + code)
+          case Right(airports) => {
+            println("\t- " + name + " [" + code + "]")
+            airports.result.hits.hits.foreach(airport => {
+              println("\t\t" + airport.sourceAsMap("name"))
+            })
+          }
         }
       }
-    })
+    }
   }
 
   def reportTop10MostCommonRunwayLatitude(): Unit  = {

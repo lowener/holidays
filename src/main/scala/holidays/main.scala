@@ -51,7 +51,6 @@ object Main {
             Elastic.reportAirports
             Elastic.reportTop10MostCommonRunwayLatitude()
             Elastic.reportRunways()
-            println("Not implemented yet")
          }
          else {
             println("Invalid answer")
