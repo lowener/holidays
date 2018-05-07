@@ -43,7 +43,7 @@ object Elastic {
         airports.result.hits.hits.flatMap(airport => {
           val airportMap = airport.sourceAsMap
           val runwaysByAirport = ElasticClient.client.execute {
-            search("runways" / "runways").matchQuery("airport_ref", airportMap("id")).aggregations(agg)
+            search("runways" / "runways").matchQuery("airport_ident", airportMap("ident")).aggregations(agg)
           }.await
 
           runwaysByAirport match {
