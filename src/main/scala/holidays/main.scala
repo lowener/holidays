@@ -31,9 +31,9 @@ object Main {
             println("Query about a country. Do you want to use:")
             println("1. Country code?")
             println("2. Country name?")
-            val codeOrName = readInt
+            val codeOrName = scala.io.StdIn.readInt()
             println("Enter the country")
-            val country : String = readLine
+            val country : String = scala.io.StdIn.readLine()
             val code = codeOrName match {
                case c if c == 1 => Elastic.searchCountry("code", country)
                case c if c == 2 => Elastic.searchCountry("name", country)
@@ -43,14 +43,28 @@ object Main {
                }
             }
             code match {
-               case Some(countryCode) =>Elastic.searchAirportsByCountry(countryCode("code").toString)
+               case Some(countryCode) => Elastic.searchAirportsByCountry(countryCode("code").toString)
                case None => ()
             }
          }
-         else  if (queryOrReport == 2){
-            Elastic.reportAirports
-            Elastic.reportTop10MostCommonRunwayLatitude()
-            Elastic.reportRunways()
+         else  if (queryOrReport == 2) {
+           println("What kind of report do you want ?")
+           println("1. Top 10 countries with highest and lowest number of airports?")
+           println("2. Type of runways (as indicated in \"surface\" column) per country?")
+           println("3. Top 10 most common runway latitude (indicated in \"le_ident\" column)?")
+           val reportKind = scala.io.StdIn.readInt()
+           reportKind match {
+             case 1 => Elastic.reportAirports()
+             case 2 => {
+               println("How much country do you want to print?")
+               val countryNumber = scala.io.StdIn.readInt()
+               Elastic.reportRunways(countryNumber)
+             }
+             case 3 => Elastic.reportTop10MostCommonRunwayLatitude()
+             case _=> {
+               println("Invalid answer")
+             }
+           }
          }
          else {
             println("Invalid answer")

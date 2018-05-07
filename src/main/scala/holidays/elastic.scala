@@ -14,9 +14,9 @@ object Elastic {
   import com.sksamuel.elastic4s.http.ElasticDsl._ //Elastic domain Specific Language
   def getType[T: TypeTag](obj: T) = typeOf[T]
 
-  def getAllCountryNameAndCode(): Array[(String, String)] = {
+  def getAllCountryNameAndCode(countryNumber: Int): Array[(String, String)] = {
     var countriesQuery = ElasticClient.client.execute {
-      search("countries" / "countries").matchAllQuery().size(10000)
+      search("countries" / "countries").matchAllQuery().size(countryNumber)
     }.await
 
     countriesQuery match {
@@ -30,41 +30,44 @@ object Elastic {
     }
   }
 
-  def reportRunways(): Unit = {
+  def getSurfacesByCountryCode(code: String): Array[String] = {
     val agg = termsAggregation("Aggreg").field("surface.keyword")
 
-    println("Surfaces by country:")
-    getAllCountryNameAndCode().foreach {
-      case (name: String, code: String) => {
-        var airportsByCountry = ElasticClient.client.execute {
-          search("airports" / "airports").matchQuery("iso_country", code)
-        }.await
+    var airportsByCountry = ElasticClient.client.execute {
+      search("airports" / "airports").matchQuery("iso_country", code)
+    }.await
 
-        airportsByCountry match {
-          case Left(failure) => Utils.printKo("No airports found for " + code)
-          case Right(airports) => {
-            val surfaceMap = airports.result.hits.hits.flatMap(airport => {
-              val airportMap = airport.sourceAsMap
-              val test = ElasticClient.client.execute {
-                search("runways" / "runways").matchQuery("airport_ref", airportMap("id")).aggregations(agg)
-              }.await
+    airportsByCountry match {
+      case Left(failure) => Array()
+      case Right(airports) => {
+        airports.result.hits.hits.flatMap(airport => {
+          val airportMap = airport.sourceAsMap
+          val runwaysByAirport = ElasticClient.client.execute {
+            search("runways" / "runways").matchQuery("airport_ref", airportMap("id")).aggregations(agg)
+          }.await
 
-              test match {
-                case Left(failure) => List()
-                case Right(runways) => {
-                  runways.result
-                    .aggregations
-                    .data("Aggreg")
-                    .asInstanceOf[Map[String, List[Map[String, Any]]]]("buckets")
-                    .map(surface => surface("key"))
-                }
-              }
-            })
-
-            val countrySurfaces = surfaceMap.distinct.filter(x => { x != "" }).mkString("[", ", ", "]")
-            println("\t- " + name + ": " + countrySurfaces)
+          runwaysByAirport match {
+            case Left(failure) => List()
+            case Right(runways) => {
+              runways.result
+                .aggregations
+                .data("Aggreg")
+                .asInstanceOf[Map[String, List[Map[String, String]]]]("buckets")
+                .map(surface => surface("key"))
+            }
           }
-        }
+        }).distinct.filter(surface => { surface != "" })
+      }
+    }
+  }
+
+  def reportRunways(countryNumber: Int): Unit = {
+    println("Surfaces by country:")
+
+    getAllCountryNameAndCode(countryNumber).foreach {
+      case (name: String, code: String) => {
+            val countrySurfaces = getSurfacesByCountryCode(code)
+            println("\t- " + name + ": " + countrySurfaces.mkString("[", ", ", "]"))
       }
     }
   }
@@ -94,12 +97,10 @@ object Elastic {
     }
   }
 
-  def reportAirports {
+  def reportAirports(): Unit = {
     import com.sksamuel.elastic4s.searches.aggs.TermsOrder
     // "keyword" used to make a text field aggregatable in ElasticSearch
 
-    /*var x = getType(termsAggregation("Aggreg"))
-    println(x.decls.mkString("\n"))*/
     val agg = termsAggregation("Aggreg").field("iso_country.keyword")
     val agg2 = termsAggregation("Aggreg").field("iso_country.keyword").order(TermsOrder("_count"))
 
@@ -126,7 +127,6 @@ object Elastic {
         } catch {
           case e: NullPointerException => println(e)
         }
-
       }
     }
 
