@@ -24,13 +24,16 @@ object Elastic {
       case Right(countries) => {
         countries.result.hits.hits.map(country => {
           val countryMap = country.sourceAsMap
-          (countryMap("code").toString, countryMap("name").toString)
+          (countryMap("name").toString, countryMap("code").toString)
         })
       }
     }
   }
 
   def reportRunways(): Unit = {
+    val agg = termsAggregation("Aggreg").field("surface.keyword")
+
+    println("Surfaces by country:")
     getAllCountryNameAndCode().foreach {
       case (name: String, code: String) => {
         var airportsByCountry = ElasticClient.client.execute {
@@ -41,14 +44,30 @@ object Elastic {
           case Left(failure) => Utils.printKo("No airports found for " + code)
           case Right(airports) => {
             println("\t- " + name + " [" + code + "]")
-            airports.result.hits.hits.foreach(airport => {
-              println("\t\t" + airport.sourceAsMap("name"))
+            val surfaceMap = airports.result.hits.hits.flatMap(airport => {
+              val airportMap = airport.sourceAsMap
+              val test = ElasticClient.client.execute {
+                search("runways" / "runways").matchQuery("airport_ref", airportMap("id")).aggregations(agg)
+              }.await
+
+              test match {
+                case Left(failure) => List()
+                case Right(runways) => {
+                  runways.result
+                    .aggregations
+                    .data("Aggreg")
+                    .asInstanceOf[Map[String, List[Map[String, Any]]]]("buckets")
+                    .map(surface => surface("key"))
+                }
+              }
             })
+
+            //surfaceMap.distinct
           }
         }
       }
     }
-  }
+  }  // .mkString("[", ", ", "]")
 
   def reportTop10MostCommonRunwayLatitude(): Unit  = {
     val agg = termsAggregation("Aggreg").field("le_ident.keyword")
