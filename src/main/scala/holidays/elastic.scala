@@ -2,7 +2,11 @@ package holidays
 import com.sksamuel.elastic4s.ElasticsearchClientUri
 import com.sksamuel.elastic4s.http._
 import scala.reflect.runtime.universe._
-
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
+import java.util.concurrent.Executors
+import scala.util.{Failure,Success}
+import scala.concurrent.duration._
 
 object ElasticClient{
   lazy val client = HttpClient(ElasticsearchClientUri("localhost", 9200))
@@ -26,9 +30,34 @@ object Elastic {
           val countryMap = country.sourceAsMap
           (countryMap("name").toString, countryMap("code").toString)
         })
-      }
+
+/*
+  def getAllCountryCode(): Future[List[String]] = {
+    val agg = termsAggregation("Aggreg").field("code.keyword")
+
+    val countriesCode = ElasticClient.client.execute {
+      search("countries"/"countries").aggregations(agg).limit(10000)
     }
-  }
+    countriesCode.map(c => c match {
+      case Left(failure) => List("")
+      case Right(commonLat) => {
+        try {
+          commonLat.result
+            .aggregations
+            .data("Aggreg")
+            .asInstanceOf[Map[String, List[Map[String, Any]]]]("buckets")
+            .map(country => country("key").toString)
+        } catch {
+          case e: NullPointerException => println(e)
+            List("")
+        }
+>>>>>>> Fixed queries for asynchronous operations
+*/
+      }
+   }).recover{
+      case _ => List("")
+   }
+}
 
   def getSurfacesByCountryCode(code: String): Array[String] = {
     val agg = termsAggregation("Aggreg").field("surface.keyword")
@@ -68,6 +97,22 @@ object Elastic {
       case (name: String, code: String) => {
             val countrySurfaces = getSurfacesByCountryCode(code)
             println("\t- " + name + ": " + countrySurfaces.mkString("[", ", ", "]"))
+
+/*
+    getAllCountryCode().foreach(code => {
+      var airportsByCountry = ElasticClient.client.execute {
+        search("airports" / "airports").matchQuery("iso_country", code)
+      }
+
+      airportsByCountry.foreach {
+        case Left(failure) => Utils.printKo("No airports found for " + code)
+        case Right(airports) => {
+          println("\t- " + code)
+          airports.result.hits.hits.map(airport => {
+            println("\t\t" + airport.sourceAsMap("name"))
+          })
+*/
+        }
       }
     }
   }
@@ -77,8 +122,8 @@ object Elastic {
 
     val commonLatitude = ElasticClient.client.execute {
       search("runways"/"runways").aggregations(agg)
-    }.await
-    commonLatitude match {
+    }
+    commonLatitude.foreach {
       case Left(failure) => Utils.printKo("Most common latitude not found " + failure.error)
       case Right(commonLat) => {
         println("Top 10 most common runway latitude:")
@@ -106,8 +151,8 @@ object Elastic {
 
     val bestAirportsEither = ElasticClient.client.execute{
       search("airports"/"airports").aggregations(agg)
-    }.await
-    bestAirportsEither match {
+    }
+    bestAirportsEither.map {
       case Left(failure) => Utils.printKo("Best airports not found " + failure.error)
       case Right(bestAirports) => {
         println("Top 10 countries by airports number:")
@@ -117,12 +162,11 @@ object Elastic {
             .data("Aggreg")
             .asInstanceOf[Map[String, List[Map[String, Any]]]]("buckets")
             .foreach(countryMap => {
-              val country : Map[String, Any] = countryMap
-              val x = getCountryNameByCode(country("key").toString)
-              x match {
-                case Some(name) => println("\t- " + name + ": " + country("doc_count").toString)
-                case None => println("\t- " + country("key").toString + ": " + country("doc_count").toString)
-              }
+              val countryname = getCountryNameByCode(countryMap("key").toString)
+              countryname.foreach(x => x match {
+                case Some(name) => println("\t- " + name + ": " + countryMap("doc_count").toString)
+                case None => println("\t- " + countryMap("key").toString + ": " + countryMap("doc_count").toString)
+             })
             })
         } catch {
           case e: NullPointerException => println(e)
@@ -133,8 +177,8 @@ object Elastic {
 
     val worstAirportsEither = ElasticClient.client.execute{
       search("airports"/"airports").aggregations(agg2)
-    }.await
-    worstAirportsEither match {
+    }
+    worstAirportsEither.map {
       case Left(failure) => Utils.printKo("Worst airports not found " + failure.error)
       case Right(worstAirports) => {
         println("Worst 10 countries by airports number:")
@@ -144,12 +188,12 @@ object Elastic {
             .data("Aggreg")
             .asInstanceOf[Map[String, List[Map[String, Any]]]]("buckets")
             .foreach(countryMap => {
-              val country : Map[String, Any] = countryMap.asInstanceOf[Map[String, Any]]
-              val x = getCountryNameByCode(country("key").toString)
-              x match {
+               val country : Map[String, Any] = countryMap.asInstanceOf[Map[String, Any]]
+               val countryname : Future[Option[String]] = getCountryNameByCode(country("key").toString)
+               countryname.foreach(x => x match {
                 case Some(name) => println("\t- " + name + ": " + country("doc_count").toString)
                 case None => println("\t- " + country("key").toString + ": " + country("doc_count").toString)
-              }
+             })
             })
         } catch {
           case e: NullPointerException => println(e)
@@ -159,121 +203,121 @@ object Elastic {
     }
   }
 
-  def getCountryNameByCode(countryCode: String)  = {
-    val searchCountry = ElasticClient.client.execute{
-      search("countries"/"countries").matchQuery("code", countryCode).size(1)
-    }.await
-    searchCountry match {
-      case Left(failure) => {
-        Utils.printKo("Failed to find country code by name" + failure.error)
-        None
+   def getCountryNameByCode(countryCode: String) : Future[Option[String]] = {
+      val searchCountry = ElasticClient.client.execute{
+         search("countries"/"countries").matchQuery("code", countryCode).size(1)
       }
-      case Right(success) => Some(success.result.hits.hits.head.sourceAsMap("name").toString)
-    }
+      searchCountry.map({
+         case Left(failure) => {
+            Utils.printKo("Failed to find country code by name" + failure.error)
+            None
+         }
+         case Right(success) => Some(success.result.hits.hits.head.sourceAsMap("name").toString)
+      })
+   }
 
-  }
-
-  def searchRunwaysByAirports(airportIdent: String) {
-    val searchRunwaysEither = ElasticClient.client.execute{
-      search("runways"/"runways").matchQuery("airport_ident", airportIdent)
-    }.await
-    searchRunwaysEither  match {
-      case Left(failure) => println("\t\tNo runways found for this airport (ident: " + airportIdent +")")
-      case Right(searchRunways) => {
-        println("\tFound " + Console.BLUE + searchRunways.result.hits.hits.length + Console.WHITE +" available runways:")
-        searchRunways.result.hits.hits.map(hit => {
-          val hitMap = hit.sourceAsMap
-          println("\t\tid: " + hitMap("id") + ", length: " + hitMap("length_ft") +
-            " ft., width: " + hitMap("width_ft") + " ft., surface: " + hitMap("surface"))
-        })
+   def searchRunwaysByAirports(airportIdent: String) : Future[String] = {
+      val searchRunwaysEither = ElasticClient.client.execute{
+         search("runways"/"runways").matchQuery("airport_ident", airportIdent)
       }
-    }
-  }
+      val resRunways = searchRunwaysEither.map(runways => runways match {
+         case Left(failure) => "\t\tNo runways found for this airport (ident: " + airportIdent +")"
+         case Right(searchRunways) => {
+            val resString = "\tFound " + Console.BLUE + searchRunways.result.hits.hits.length + Console.WHITE +" available runways:"
+            searchRunways.result.hits.hits.map(hit => {
+               val hitMap = hit.sourceAsMap
+               "\t\tid: " + hitMap("id") + ", length: " + hitMap("length_ft") +
+                  " ft., width: " + hitMap("width_ft") + " ft., surface: " + hitMap("surface")+ "\n"
+            }).foldLeft(resString + "\n"){(acc, elt) => {
+               acc + elt
+            }}
+         }
+      })
+      resRunways
+   }
 
-  def searchAirportsByCountry(countryCode: String, first : Boolean = true, nb : Int = 10): Unit = {
-    val searchAirportsEither = ElasticClient.client.execute{ // FIXME: Use searchScroll
-      search("airports"/"airports").matchQuery("iso_country", countryCode).limit(nb)
-    }.await
-
-    match {
-      case Left(failure) => Utils.printKo("No airports found for " + countryCode)
-      case Right(searchAirports) => {
-        // var x = getType(searchAirports.hits)
-        // println(x.decls.mkString("\n"))
-        searchAirports.result.hits.hits.map(hit => {
-          val hitMap = hit.sourceAsMap
-          println("\t" + hitMap("name") + ": " + hitMap("type") + " (" + hitMap("municipality")
-            + ", ident: " + hitMap("ident") +")")
-          searchRunwaysByAirports(hitMap("ident").toString)
-        })
-
-        if (nb < searchAirports.result.hits.total && first)
-          println("Printed a sample of " + Console.BLUE + searchAirports.result.hits.size + Console.WHITE
-            + "/" + Console.BLUE + searchAirports.result.hits.total + Console.WHITE + " airports")
-        if (nb < searchAirports.result.hits.total && first) {
-          println("How many airports do you want to see?")
-          try {
-            val i = readInt
-            if (i > 0)
-              searchAirportsByCountry(countryCode, false, i)
-          } catch {
-            case e: NumberFormatException => println("Wrong input")
-          }
-
-        }
+   def searchAirportsByCountry(countryCode: String, first : Boolean = true, nb : Int = 10): Future[(String, String)] = {
+      val searchAirportsEither = ElasticClient.client.execute{ // FIXME: Use searchScroll
+         search("airports"/"airports").matchQuery("iso_country", countryCode).limit(nb)
       }
-    }
-  }
 
-  // With keyName == Code || Name
-  def searchCountry(keyName: String, countryName: String) : Option[Map[String, AnyRef]] = {
-    // FIXME: Use CompletionSuggestions
+      searchAirportsEither.flatMap(airportsEither => airportsEither match {
+         case Left(failure) => {
+            Utils.printKo("No airports found for " + countryCode + "\n")
+            Future{("","")}
+         }
+         case Right(searchAirports) => {
+            // var x = getType(searchAirports.hits)
+            // println(x.decls.mkString("\n"))
+            val airportsFuture = searchAirports.result.hits.hits.map(hit => {
+               val hitMap = hit.sourceAsMap
+               // (add a wrapper around the resulting string)
+               searchRunwaysByAirports(hitMap("ident").toString).map(strRunways => {
+                  "\t" + hitMap("name") + ": " + hitMap("type") + " (" + hitMap("municipality") +
+                   ", ident: " + hitMap("ident") +")" + "\n"+ strRunways+ "\n"
+               })
+            })
 
-    val mysugg = termSuggestion("TermSugg").on(keyName).text(countryName)
-    //lazy val mysugg2 = completionSuggestion("CompletionSugg").field(keyName).text(countryName)
-    val searchCountryEither = ElasticClient.client.execute{
-      search("countries"/"countries").matchQuery(keyName, countryName)
-        .suggestions(mysugg)
-    }.await
+            // Wrap the mapping in a single future.
+            Future.reduce(airportsFuture)(_ + '\n' + _).map(airportsString => {
+               // This await is mandatory, otherwise the application exits and doesn't wait
+               // for the rest of the execution of our program)
+               if (nb < searchAirports.result.hits.total && first) {
+                  (airportsString.concat("Printed a sample of " + Console.BLUE + airportsFuture.length + Console.WHITE
+                     + "/" + Console.BLUE + searchAirports.result.hits.total + Console.WHITE + " airports\n"
+                     + "How many airports do you want to see?"), countryCode)
+               }
+               else
+                  (airportsString, countryCode)
+            })
+         }
+      })
+   }
 
-    searchCountryEither match {
+  // With keyName == "Code" || "Name"
+  def searchCountry(keyName: String, countryName: String) : Future[Option[Map[String, AnyRef]]] = {
+      // FIXME: Use CompletionSuggestions
+      val mysugg = termSuggestion("TermSugg").on(keyName).text(countryName)
+      //lazy val mysugg2 = completionSuggestion("CompletionSugg").field(keyName).text(countryName)
+      val searchCountryEither = ElasticClient.client.execute{
+         search("countries"/"countries").matchQuery(keyName, countryName)
+                                        .suggestions(mysugg)
+      }
+
+    searchCountryEither.map(countryEither => countryEither match {
       case Left(failure) => {
         Utils.printKo("Country " + countryName + " was not found")
-        try { // Suggestion
-          None
-          /*val completionCountry = ElasticClient.client.execute{
-              search("countries").suggestions(mysugg2)
-          }.await*/
-        } catch { // Try catch is mandatory here, the library offers no way to check if "TermSugg" exists...
-          case e: NullPointerException => {
-            println("No suggestions available")
-            None
-          }
-        }
+        None
       }
       case Right(searchCountry) => {
-        if (searchCountry.result.isEmpty) {
-          Utils.printKo("Country " + countryName + " was not found")
-          try {
-            searchCountry.result.termSuggestion("TermSugg").foreach(termsuggested => {
-              if (termsuggested._2.options.length > 0)
-                println("Maybe you meant:")
-              termsuggested._2.options.foreach(term => println("\t" + term.text))
-            })
-          } catch {
-            case e: NullPointerException => println("Nothing to suggest")
-          }
-          None
-        }
-        else {
-          if (keyName.equals("name"))
-            Utils.printOk("Found country " + countryName + " in ElasticSearch")
-          else
-            Utils.printOk("Found country " + getCountryNameByCode(countryName).getOrElse(countryName) + " in ElasticSearch")
-          Some(searchCountry.result.hits.hits.head.sourceAsMap)
-        }
+         if (searchCountry.result.isEmpty) {
+            Utils.printKo("Country " + countryName + " was not found")
+            try {
+               searchCountry.result.termSuggestion("TermSugg").foreach(termsuggested => {
+                  if (termsuggested._2.options.length > 0)
+                     println("Maybe you meant:")
+                  termsuggested._2.options.foreach(term => println("\t" + term.text))
+               })
+            } catch {
+               case e: NullPointerException => println("Nothing to suggest")
+            }
+            None
+         }
+         else {
+            if (keyName.equals("name"))
+               Utils.printOk("Found country " + countryName + " in ElasticSearch")
+            else
+               getCountryNameByCode(countryName).foreach(countryNameEither => countryNameEither match {
+                  case Some(countryName) => Utils.printOk("Found country " + countryName + " in ElasticSearch")
+                  case None => ()
+
+               })
+
+
+            Some(searchCountry.result.hits.hits.head.sourceAsMap)
+         }
       }
-    }
+   })
   }
 }
 

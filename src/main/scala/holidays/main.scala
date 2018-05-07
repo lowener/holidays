@@ -1,5 +1,7 @@
 package holidays
-
+import scala.concurrent._
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.duration._
 
 object Utils {
     def printOk(s: String) = {
@@ -33,38 +35,64 @@ object Main {
             println("2. Country name?")
             val codeOrName = scala.io.StdIn.readInt()
             println("Enter the country")
-            val country : String = scala.io.StdIn.readLine()
-            val code = codeOrName match {
+
+            val country : String = readLine
+            val codeFuture = codeOrName match {
                case c if c == 1 => Elastic.searchCountry("code", country)
                case c if c == 2 => Elastic.searchCountry("name", country)
-               case _=> {
+               case _=> Future {
                   println("Invalid answer")
                   None
                }
             }
-            code match {
+            val searchAirportsRes = codeFuture.flatMap(code => code match {
                case Some(countryCode) => Elastic.searchAirportsByCountry(countryCode("code").toString)
-               case None => ()
+               case None => Future{("","")}
+            })
+            //println(Elastic.getType(futureExec))
+
+            try {
+               val resultString : (String, String) = Await.result(searchAirportsRes, Duration("15 seconds"))
+               val airportStr = resultString._1
+               val countryCode = resultString._2
+               println(airportStr)
+               val i = readInt
+               if (i > 0) {
+                  val airportStr2 = Await.result(Elastic.searchAirportsByCountry(countryCode, false, i), Duration("15 seconds"))
+                  println(airportStr2)
+               }
+            } catch {
+               case e: NumberFormatException => println("Wrong input")
+               case e: TimeoutException => println("No response... Bye")
             }
+
+
+            // Await here since otherwise, the program exits.
+            //try {
+
+            /*} catch {
+            }*/
+
          }
          else  if (queryOrReport == 2) {
-           println("What kind of report do you want ?")
-           println("1. Top 10 countries with highest and lowest number of airports?")
-           println("2. Type of runways (as indicated in \"surface\" column) per country?")
-           println("3. Top 10 most common runway latitude (indicated in \"le_ident\" column)?")
-           val reportKind = scala.io.StdIn.readInt()
-           reportKind match {
-             case 1 => Elastic.reportAirports()
-             case 2 => {
-               println("How much country do you want to print?")
-               val countryNumber = scala.io.StdIn.readInt()
-               Elastic.reportRunways(countryNumber)
-             }
-             case 3 => Elastic.reportTop10MostCommonRunwayLatitude()
-             case _=> {
-               println("Invalid answer")
-             }
-           }
+            println("What kind of report do you want ?")
+            println("1. Top 10 countries with highest and lowest number of airports?")
+            println("2. Type of runways (as indicated in \"surface\" column) per country?")
+            println("3. Top 10 most common runway latitude (indicated in \"le_ident\" column)?")
+            val reportKind = scala.io.StdIn.readInt()
+            val resultString = reportKind match {
+               case 1 => Elastic.reportAirports()
+               case 2 => {
+                  println("How much country do you want to print?")
+                  val countryNumber = scala.io.StdIn.readInt()
+                  Elastic.reportRunways(countryNumber)
+               }
+               case 3 => Elastic.reportTop10MostCommonRunwayLatitude()
+               case _=> {
+                  Future{"Invalid answer"}
+               }
+            }
+            Await.result(resultString, Duration("25 seconds"))
          }
          else {
             println("Invalid answer")
