@@ -43,7 +43,6 @@ object Elastic {
         airportsByCountry match {
           case Left(failure) => Utils.printKo("No airports found for " + code)
           case Right(airports) => {
-            println("\t- " + name + " [" + code + "]")
             val surfaceMap = airports.result.hits.hits.flatMap(airport => {
               val airportMap = airport.sourceAsMap
               val test = ElasticClient.client.execute {
@@ -62,12 +61,13 @@ object Elastic {
               }
             })
 
-            //surfaceMap.distinct
+            val countrySurfaces = surfaceMap.distinct.filter(x => { x != "" }).mkString("[", ", ", "]")
+            println("\t- " + name + ": " + countrySurfaces)
           }
         }
       }
     }
-  }  // .mkString("[", ", ", "]")
+  }
 
   def reportTop10MostCommonRunwayLatitude(): Unit  = {
     val agg = termsAggregation("Aggreg").field("le_ident.keyword")
