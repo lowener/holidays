@@ -16,7 +16,7 @@ object Elastic {
 
   def getAllCountryNameAndCode(): Array[(String, String)] = {
     var countriesQuery = ElasticClient.client.execute {
-      search("countries" / "countries").matchAllQuery()
+      search("countries" / "countries").matchAllQuery().size(10000)
     }.await
 
     countriesQuery match {
