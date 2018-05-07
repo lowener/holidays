@@ -63,7 +63,7 @@ object Main {
                }
             } catch {
                case e: NumberFormatException => println("Wrong input")
-               case e: TimeoutException => println("No response... Bye")
+               case e: TimeoutException => println("Waited too long.\nExiting")
             }
 
 
@@ -74,6 +74,7 @@ object Main {
             }*/
 
          }
+<<<<<<< HEAD
          else  if (queryOrReport == 2) {
             println("What kind of report do you want ?")
             println("1. Top 10 countries with highest and lowest number of airports?")
@@ -93,6 +94,20 @@ object Main {
                }
             }
             Await.result(resultString, Duration("25 seconds"))
+=======
+         else if (queryOrReport == 2){
+            val listReports = List(Elastic.reportAirports,
+                                   Elastic.reportTop10MostCommonRunwayLatitude,
+                                   Elastic.reportRunways)
+
+            try {
+               println("Report:")
+               // Await to not exit if it's not printed!
+               listReports.map(futureReport => Await.result(futureReport.map(println(_)), Duration("10 seconds")))
+            } catch {
+               case e: TimeoutException => println("Waited too long.\nExiting")
+            }
+>>>>>>> [Report] Finished converting elastic calls to asynchronous
          }
          else {
             println("Invalid answer")
@@ -111,10 +126,15 @@ object Main {
          var csvList: List[Csv] = zip(args.toList, csvNames)
                                   .map(x =>  Parse_csv.readCsv(x._1, x._2))
 
-         csvList.foreach(csv => {
-            if (csvToElastic.createESIndexIfExists(csv.getName))
-               csvToElastic.csvToElasticGrouped(csv)
+         // Await because we cant start the TUI before the csv is imported,
+         // and if we don't wait, the program exits
+         val csvImported : List[Future[Any]] = csvList.map(csv => {
+            csvToElastic.createESIndexIfExists(csv.getName)
+                        .map(booleanRes => if (booleanRes)
+                                          csvToElastic.csvToElasticGrouped(csv))
+
          })
+         csvImported.foreach(csvFuture => Await.result(csvFuture, Duration("25 seconds")))
          //Elastic.searchCountry("name", "Frince")
          textUserInterface
          //Elastic.reportAirports

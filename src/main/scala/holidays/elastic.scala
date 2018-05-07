@@ -15,21 +15,24 @@ object ElasticClient{
 
 
 object Elastic {
-  import com.sksamuel.elastic4s.http.ElasticDsl._ //Elastic domain Specific Language
-  def getType[T: TypeTag](obj: T) = typeOf[T]
+   import com.sksamuel.elastic4s.http.ElasticDsl._ //Elastic domain Specific Language
+   def getType[T: TypeTag](obj: T) = typeOf[T]
 
-  def getAllCountryNameAndCode(countryNumber: Int): Array[(String, String)] = {
-    var countriesQuery = ElasticClient.client.execute {
-      search("countries" / "countries").matchAllQuery().size(countryNumber)
-    }.await
+   def getAllCountryNameAndCode(countryNumber: Int): Future[Array[(String, String)]] = {
+      var countriesQueryFut = ElasticClient.client.execute {
+         search("countries" / "countries").matchAllQuery().size(countryNumber)
+      }
 
-    countriesQuery match {
-      case Left(failure) => Array()
-      case Right(countries) => {
-        countries.result.hits.hits.map(country => {
-          val countryMap = country.sourceAsMap
-          (countryMap("name").toString, countryMap("code").toString)
-        })
+      countriesQueryFut.map(countriesQuery => countriesQuery match {
+         case Left(failure) => Array()
+         case Right(countries) => {
+            countries.result.hits.hits.map(country => {
+               val countryMap = country.sourceAsMap
+               (countryMap("name").toString, countryMap("code").toString)
+            })
+         }
+      })
+   }
 
 /*
   def getAllCountryCode(): Future[List[String]] = {
@@ -53,11 +56,6 @@ object Elastic {
         }
 >>>>>>> Fixed queries for asynchronous operations
 */
-      }
-   }).recover{
-      case _ => List("")
-   }
-}
 
   def getSurfacesByCountryCode(code: String): Array[String] = {
     val agg = termsAggregation("Aggreg").field("surface.keyword")
@@ -104,44 +102,55 @@ object Elastic {
         search("airports" / "airports").matchQuery("iso_country", code)
       }
 
-      airportsByCountry.foreach {
-        case Left(failure) => Utils.printKo("No airports found for " + code)
-        case Right(airports) => {
-          println("\t- " + code)
-          airports.result.hits.hits.map(airport => {
-            println("\t\t" + airport.sourceAsMap("name"))
-          })
-*/
-        }
-      }
-    }
-  }
 
-  def reportTop10MostCommonRunwayLatitude(): Unit  = {
-    val agg = termsAggregation("Aggreg").field("le_ident.keyword")
+   def reportRunways(): Future[String]  = {
+      val agg = termsAggregation("Aggreg").field("surface.keyword")
 
-    val commonLatitude = ElasticClient.client.execute {
-      search("runways"/"runways").aggregations(agg)
-    }
-    commonLatitude.foreach {
-      case Left(failure) => Utils.printKo("Most common latitude not found " + failure.error)
-      case Right(commonLat) => {
-        println("Top 10 most common runway latitude:")
-        try {
-          commonLat.result
-            .aggregations
-            .data("Aggreg")
-            .asInstanceOf[Map[String, List[Map[String, Any]]]]("buckets")
-            .foreach(latitude => {
-              println("\t- " + latitude("key").toString + ": " + latitude("doc_count").toString)
+      println("Surfaces by country:")
+      getAllCountryNameAndCode().map(list => list.map {
+         case (name: String, code: String) => {
+            var airportsByCountryFut = ElasticClient.client.execute {
+               search("airports" / "airports").matchQuery("iso_country", code)
+            }
+
+            airportsByCountryFut.map(airportsByCountry => airportsByCountry match {
+               case Left(failure) => "No airports found for " + code
+               case Right(airports) => {
+                  val surfaceMap = airports.result.hits.hits.flatMap(airport => {
+                     val airportMap = airport.sourceAsMap
+                     val test = ElasticClient.client.execute {
+                        search("runways" / "runways").matchQuery("airport_ref", airportMap("id"))
+                                                     .aggregations(agg)
+                     }
+
+                     test match {
+                        case Left(failure) => List()
+                        case Right(runways) => {
+                           runways.result
+                                 .aggregations
+                                 .data("Aggreg")
+                                 .asInstanceOf[Map[String, List[Map[String, Any]]]]("buckets")
+                                 .map(surface => surface("key"))
+                        }
+                     }
+                  })
+                  val countrySurfaces = surfaceMap.distinct
+                                                  .filter(x => { x != "" })
+                                                  .mkString("[", ", ", "]")
+                  "\t- " + name + ": " + countrySurfaces
+               }
             })
-        } catch {
-          case e: NullPointerException => println(e)
-        }
-      }
-    }
-  }
-
+         }
+      })
+   }
+/*
+   def reportRunways(): Future[String] = {
+      val futurelist : Future[List[Future[String]]] = getAllCountryCode().map(codeFuture =>
+         codeFuture.map(code => {
+            var airportsByCountry = ElasticClient.client.execute {
+               search("airports" / "airports").matchQuery("iso_country", code)
+            }
+*/
   def reportAirports(): Unit = {
     import com.sksamuel.elastic4s.searches.aggs.TermsOrder
     // "keyword" used to make a text field aggregatable in ElasticSearch
@@ -171,37 +180,123 @@ object Elastic {
         } catch {
           case e: NullPointerException => println(e)
         }
+/*
+airportsByCountry.map {
+   case Left(failure) => "No airports found for " + code + "\n"
+   case Right(airports) => {
+      airports.result.hits.hits.map(airport => {
+         "\t\t" + airport.sourceAsMap("name")
+      }).foldLeft("\t- " + code){
+         (acc, elt) => acc + "\n" + elt
       }
-    }
+   }
+}
+})
+)
+futurelist.flatMap(list => Future.reduce(list)(_ + '\n' + _))
+}*/
 
 
-    val worstAirportsEither = ElasticClient.client.execute{
-      search("airports"/"airports").aggregations(agg2)
-    }
-    worstAirportsEither.map {
-      case Left(failure) => Utils.printKo("Worst airports not found " + failure.error)
-      case Right(worstAirports) => {
-        println("Worst 10 countries by airports number:")
-        try {
-          worstAirports.result
-            .aggregations
-            .data("Aggreg")
-            .asInstanceOf[Map[String, List[Map[String, Any]]]]("buckets")
-            .foreach(countryMap => {
-               val country : Map[String, Any] = countryMap.asInstanceOf[Map[String, Any]]
-               val countryname : Future[Option[String]] = getCountryNameByCode(country("key").toString)
-               countryname.foreach(x => x match {
-                case Some(name) => println("\t- " + name + ": " + country("doc_count").toString)
-                case None => println("\t- " + country("key").toString + ": " + country("doc_count").toString)
-             })
-            })
-        } catch {
-          case e: NullPointerException => println(e)
-        }
+   def reportTop10MostCommonRunwayLatitude(): Future[String] = {
+      val agg = termsAggregation("Aggreg").field("le_ident.keyword")
 
+      val commonLatitude = ElasticClient.client.execute {
+         search("runways"/"runways").aggregations(agg)
+//>>>>>>> [Report] Finished converting elastic calls to asynchronous
       }
-    }
-  }
+      commonLatitude.map {
+         case Left(failure) => "Most common latitude not found " + failure.error
+         case Right(commonLat) => {
+            val startString = "\nTop 10 most common runway latitude:"
+            try {
+               commonLat.result
+                        .aggregations
+                        .data("Aggreg")
+                        .asInstanceOf[Map[String, List[Map[String, Any]]]]("buckets")
+                        .map(latitude => {
+                           "\t- " + latitude("key").toString + ": " + latitude("doc_count").toString
+                        }).foldLeft(startString){
+                           (acc,elt) => acc + '\n' + elt
+                        }
+            } catch {
+               case e: NullPointerException => {
+                  println(e)
+                  ""
+               }
+            }
+         }
+      }
+   }
+
+   def reportAirports : Future[String] = {
+      import com.sksamuel.elastic4s.searches.aggs.TermsOrder
+      // "keyword" used to make a text field aggregatable in ElasticSearch
+
+      /*var x = getType(termsAggregation("Aggreg"))
+      println(x.decls.mkString("\n"))*/
+      val agg = termsAggregation("Aggreg").field("iso_country.keyword")
+      val agg2 = termsAggregation("Aggreg").field("iso_country.keyword").order(TermsOrder("_count"))
+
+      val bestAirportsEither = ElasticClient.client.execute{
+         search("airports"/"airports").aggregations(agg)
+      }
+      val bestFuture : Future[String] = bestAirportsEither.flatMap {
+         case Left(failure) => {
+            Future{"Best airports not found " + failure.error}
+         }
+         case Right(bestAirports) => {
+            val startString = Future{"Top 10 countries by airports number:"}
+            try {
+               val resString = bestAirports.result
+                  .aggregations
+                  .data("Aggreg")
+                  .asInstanceOf[Map[String, List[Map[String, Any]]]]("buckets")
+                  .map(countryMap => {
+                     val countryname : Future[Option[String]] = getCountryNameByCode(countryMap("key").toString)
+                     countryname.map(x => x match {
+                        case Some(name) => "\t- " + name + ": " + countryMap("doc_count").toString
+                        case None => "\t- " + countryMap("key").toString + ": " + countryMap("doc_count").toString
+                     })
+                  })
+               Future.reduce(List(startString, Future.reduce(resString)(_ + '\n' + _)))(_ + '\n' + _)
+            } catch {
+               case e: NullPointerException => {
+                  Future{e.toString}
+               }
+            }
+
+         }
+      }
+
+      val worstAirportsEither = ElasticClient.client.execute{
+         search("airports"/"airports").aggregations(agg2)
+      }
+      val worstFuture : Future[String] = worstAirportsEither.flatMap {
+         case Left(failure) => Future{"Worst airports not found " + failure.error}
+         case Right(worstAirports) => {
+            val startString = Future{"Worst 10 countries by airports number:"}
+            try {
+               val resString = worstAirports.result
+                  .aggregations
+                  .data("Aggreg")
+                  .asInstanceOf[Map[String, List[Map[String, Any]]]]("buckets")
+                  .map(countryMap => {
+                     val country : Map[String, Any] = countryMap.asInstanceOf[Map[String, Any]]
+                     val countryname : Future[Option[String]] = getCountryNameByCode(country("key").toString)
+                     countryname.map(x => x match {
+                        case Some(name) => "\t- " + name + ": " + country("doc_count").toString
+                        case None => "\t- " + country("key").toString + ": " + country("doc_count").toString
+                     })
+                  })
+               Future.reduce(List(startString, Future.reduce(resString)(_ + '\n' + _)))(_ + '\n' + _)
+            } catch {
+               case e: NullPointerException => Future{e.toString}
+            }
+         }
+      }
+      //bestFuture.zip(worstFuture) // Treat the result as a single future
+      Future.reduce(List(bestFuture, worstFuture))(_ + "\n\n" + _)
+   }
 
    def getCountryNameByCode(countryCode: String) : Future[Option[String]] = {
       val searchCountry = ElasticClient.client.execute{
@@ -260,8 +355,6 @@ object Elastic {
 
             // Wrap the mapping in a single future.
             Future.reduce(airportsFuture)(_ + '\n' + _).map(airportsString => {
-               // This await is mandatory, otherwise the application exits and doesn't wait
-               // for the rest of the execution of our program)
                if (nb < searchAirports.result.hits.total && first) {
                   (airportsString.concat("Printed a sample of " + Console.BLUE + airportsFuture.length + Console.WHITE
                      + "/" + Console.BLUE + searchAirports.result.hits.total + Console.WHITE + " airports\n"
@@ -342,53 +435,55 @@ object csvToElastic {
   def toJsonSimple(Keys: List[String], Values: List[String]): (String, String) =
     (Values(0), "{" + toJsonRec(Keys, Values) + "}\n")
 
-  def createESIndexIfExists(name: String) : Boolean = {
-    val existsResponse = ElasticClient.client.execute{indexExists(name)}.await
-    if (existsResponse.isLeft) {
-      ElasticClient.client.execute{createIndex(name)}
-      true
-    }
-    else {
-      !existsResponse.right.get.result.exists
-    }
-  }
+   def createESIndexIfExists(name: String) : Future[Boolean] = {
+      ElasticClient.client.execute{indexExists(name)}.map(existsResponse =>
+         if (existsResponse.isLeft) {
+            ElasticClient.client.execute{createIndex(name)}
+            true
+         }
+         else {
+            !existsResponse.right.get.result.exists
+         }
+      )
+   }
 
-  def csvToElasticGrouped(csv: Csv) = {
-    val cols = csv.getCols
+   def csvToElasticGrouped(csv: Csv) = {
+      val cols = csv.getCols
 
-    try {
-      //Create a list of Json
-      val listJsonData = csv.getData.map(line => toJsonSimple(cols, line))
+      try {
+         //Create a list of Json
+         val listJsonData = csv.getData.map(line => toJsonSimple(cols, line))
+         println("Importing " + csv.getName + " " + listJsonData.length + " lines...")
 
-      createESIndexIfExists(csv.getName)
-      println("Importing " + csv.getName + " " + listJsonData.length + " lines...")
+         // Split the list of Json in 6, since transmission of big chunks is expensive in ElasticSearch
+         listJsonData.grouped(listJsonData.length / 6 + 1).map(groupJson => {
+            val createdEitherFuture = ElasticClient.client.execute{
+               bulk ( // Bulk allow me to upload multiple json
+                  groupJson.map(json => indexInto(csv.getName/csv.getName).doc(json._2) id json._1)
+               ) // Map a json and its id
+            }
 
-      // Split the list of Json in 4, to not split the transmission to ElasticSearch
-      listJsonData.grouped(listJsonData.length / 4 + 1).foreach(groupJson => {
-        val createdEither = ElasticClient.client.execute{
-          bulk ( // Bulk allow me to upload multiple json
-            groupJson.map(json => indexInto(csv.getName/csv.getName).doc(json._2) id json._1)
-          ) // Map a json and its id
-        }.await
-        if (createdEither.isLeft) {
-          Utils.printKo("---- Error importing " + csv.getName + " to ElasticSearch ----")
-        }
-        else
-          Utils.printOk("---- Imported " + csv.getName + " to ElasticSearch (" + groupJson.length
-            + " lines in "  + createdEither.right.get.result.took + " ms.)----")
-      })
+            createdEitherFuture.map(createdEither => {
+               if (createdEither.isLeft) {
+                  Utils.printKo("---- Error importing " + csv.getName + " to ElasticSearch ----")
+               }
+               else
+                  Utils.printOk("---- Imported " + csv.getName + " to ElasticSearch (" + groupJson.length
+                     + " lines in "  + createdEither.right.get.result.took + " ms.)----")
+            })
+         })
       /* FIXME: putMapping to update index to add completionSuggestion
       ElasticClient.client.putMapping(csv.getName,csv.getName){
             "suggestionField" as
       }*/
-    } catch {
-      case e: IllegalArgumentException => {
-        Utils.printKo("----- JSON Conversion error for " + csv.getName + " -----")
+      } catch {
+         case e: IllegalArgumentException => {
+            Utils.printKo("----- JSON Conversion error for " + csv.getName + " -----")
+         }
+         case e: Exception => {
+            Utils.printKo("---- Exception importing " + csv.getName + " to ElasticSearch ----")
+            println(e)
+         }
       }
-      case e: Exception => {
-        Utils.printKo("---- Exception importing " + csv.getName + " to ElasticSearch ----")
-        println(e)
-      }
-    }
-  }
+   }
 }
