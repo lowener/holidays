@@ -34,206 +34,61 @@ object Elastic {
       })
    }
 
-/*
-  def getAllCountryCode(): Future[List[String]] = {
-    val agg = termsAggregation("Aggreg").field("code.keyword")
-
-    val countriesCode = ElasticClient.client.execute {
-      search("countries"/"countries").aggregations(agg).limit(10000)
-    }
-    countriesCode.map(c => c match {
-      case Left(failure) => List("")
-      case Right(commonLat) => {
-        try {
-          commonLat.result
-            .aggregations
-            .data("Aggreg")
-            .asInstanceOf[Map[String, List[Map[String, Any]]]]("buckets")
-            .map(country => country("key").toString)
-        } catch {
-          case e: NullPointerException => println(e)
-            List("")
-        }
->>>>>>> Fixed queries for asynchronous operations
-*/
-
-  def getSurfacesByCountryCode(code: String): Array[String] = {
-    val agg = termsAggregation("Aggreg").field("surface.keyword")
-
-    var airportsByCountry = ElasticClient.client.execute {
-      search("airports" / "airports").matchQuery("iso_country", code)
-    }.await
-
-    airportsByCountry match {
-      case Left(failure) => Array()
-      case Right(airports) => {
-        airports.result.hits.hits.flatMap(airport => {
-          val airportMap = airport.sourceAsMap
-          val runwaysByAirport = ElasticClient.client.execute {
-            search("runways" / "runways").matchQuery("airport_ident", airportMap("ident")).aggregations(agg)
-          }.await
-
-          runwaysByAirport match {
-            case Left(failure) => List()
-            case Right(runways) => {
-              runways.result
-                .aggregations
-                .data("Aggreg")
-                .asInstanceOf[Map[String, List[Map[String, String]]]]("buckets")
-                .map(surface => surface("key"))
-            }
-          }
-        }).distinct.filter(surface => { surface != "" })
-      }
-    }
-  }
-
-  def reportRunways(countryNumber: Int): Unit = {
-    println("Surfaces by country:")
-
-    getAllCountryNameAndCode(countryNumber).foreach {
-      case (name: String, code: String) => {
-            val countrySurfaces = getSurfacesByCountryCode(code)
-            println("\t- " + name + ": " + countrySurfaces.mkString("[", ", ", "]"))
-
-/*
-    getAllCountryCode().foreach(code => {
-      var airportsByCountry = ElasticClient.client.execute {
-        search("airports" / "airports").matchQuery("iso_country", code)
-      }
-
-
-   def reportRunways(): Future[String]  = {
+   def getSurfacesByCountryCode(code: String): Future[List[String]] = {
       val agg = termsAggregation("Aggreg").field("surface.keyword")
 
+      var airportsByCountry = ElasticClient.client.execute {
+         search("airports" / "airports").matchQuery("iso_country", code)
+      }
+
+      airportsByCountry.flatMap {
+         case Left(failure) => Future{List()}
+         case Right(airports) => {
+            val res = airports.result.hits.hits.map(airport => {
+               val airportMap = airport.sourceAsMap
+               val runwaysByAirport = ElasticClient.client.execute {
+                  search("runways" / "runways").matchQuery("airport_ident", airportMap("ident")).aggregations(agg)
+               }
+
+               runwaysByAirport.map {
+                  case Left(failure) => List()
+                  case Right(runways) => {
+                     runways.result
+                            .aggregations
+                            .data("Aggreg")
+                            .asInstanceOf[Map[String, List[Map[String, String]]]]("buckets")
+                            .map(surface => surface("key"))
+                            .distinct
+                            .filter(surface => { surface != "" })
+                  }
+               }
+               //
+            })
+            Future.reduce(res)(_:::_)
+         }
+      }
+   }
+
+   def reportRunways(countryNumber: Int): Future[String] = {
       println("Surfaces by country:")
-      getAllCountryNameAndCode().map(list => list.map {
-         case (name: String, code: String) => {
-            var airportsByCountryFut = ElasticClient.client.execute {
-               search("airports" / "airports").matchQuery("iso_country", code)
-            }
 
-            airportsByCountryFut.map(airportsByCountry => airportsByCountry match {
-               case Left(failure) => "No airports found for " + code
-               case Right(airports) => {
-                  val surfaceMap = airports.result.hits.hits.flatMap(airport => {
-                     val airportMap = airport.sourceAsMap
-                     val test = ElasticClient.client.execute {
-                        search("runways" / "runways").matchQuery("airport_ref", airportMap("id"))
-                                                     .aggregations(agg)
-                     }
+      val resultFuture = getAllCountryNameAndCode(countryNumber).map {
+         case arrayFuture : Array[(String, String)] => arrayFuture.map{
+            case (name: String, code: String) => {
+               getSurfacesByCountryCode(code).map(surface =>
+                  "\t- " + name + ": " + surface.mkString("[", ", ", "]")
+               )
 
-                     test match {
-                        case Left(failure) => List()
-                        case Right(runways) => {
-                           runways.result
-                                 .aggregations
-                                 .data("Aggreg")
-                                 .asInstanceOf[Map[String, List[Map[String, Any]]]]("buckets")
-                                 .map(surface => surface("key"))
-                        }
-                     }
-                  })
-                  val countrySurfaces = surfaceMap.distinct
-                                                  .filter(x => { x != "" })
-                                                  .mkString("[", ", ", "]")
-                  "\t- " + name + ": " + countrySurfaces
-               }
-            })
-         }
-      })
-   }
-/*
-   def reportRunways(): Future[String] = {
-      val futurelist : Future[List[Future[String]]] = getAllCountryCode().map(codeFuture =>
-         codeFuture.map(code => {
-            var airportsByCountry = ElasticClient.client.execute {
-               search("airports" / "airports").matchQuery("iso_country", code)
-            }
-*/
-  def reportAirports(): Unit = {
-    import com.sksamuel.elastic4s.searches.aggs.TermsOrder
-    // "keyword" used to make a text field aggregatable in ElasticSearch
-
-    val agg = termsAggregation("Aggreg").field("iso_country.keyword")
-    val agg2 = termsAggregation("Aggreg").field("iso_country.keyword").order(TermsOrder("_count"))
-
-    val bestAirportsEither = ElasticClient.client.execute{
-      search("airports"/"airports").aggregations(agg)
-    }
-    bestAirportsEither.map {
-      case Left(failure) => Utils.printKo("Best airports not found " + failure.error)
-      case Right(bestAirports) => {
-        println("Top 10 countries by airports number:")
-        try {
-          bestAirports.result
-            .aggregations
-            .data("Aggreg")
-            .asInstanceOf[Map[String, List[Map[String, Any]]]]("buckets")
-            .foreach(countryMap => {
-              val countryname = getCountryNameByCode(countryMap("key").toString)
-              countryname.foreach(x => x match {
-                case Some(name) => println("\t- " + name + ": " + countryMap("doc_count").toString)
-                case None => println("\t- " + countryMap("key").toString + ": " + countryMap("doc_count").toString)
-             })
-            })
-        } catch {
-          case e: NullPointerException => println(e)
-        }
-/*
-airportsByCountry.map {
-   case Left(failure) => "No airports found for " + code + "\n"
-   case Right(airports) => {
-      airports.result.hits.hits.map(airport => {
-         "\t\t" + airport.sourceAsMap("name")
-      }).foldLeft("\t- " + code){
-         (acc, elt) => acc + "\n" + elt
-      }
-   }
-}
-})
-)
-futurelist.flatMap(list => Future.reduce(list)(_ + '\n' + _))
-}*/
-
-
-   def reportTop10MostCommonRunwayLatitude(): Future[String] = {
-      val agg = termsAggregation("Aggreg").field("le_ident.keyword")
-
-      val commonLatitude = ElasticClient.client.execute {
-         search("runways"/"runways").aggregations(agg)
-//>>>>>>> [Report] Finished converting elastic calls to asynchronous
-      }
-      commonLatitude.map {
-         case Left(failure) => "Most common latitude not found " + failure.error
-         case Right(commonLat) => {
-            val startString = "\nTop 10 most common runway latitude:"
-            try {
-               commonLat.result
-                        .aggregations
-                        .data("Aggreg")
-                        .asInstanceOf[Map[String, List[Map[String, Any]]]]("buckets")
-                        .map(latitude => {
-                           "\t- " + latitude("key").toString + ": " + latitude("doc_count").toString
-                        }).foldLeft(startString){
-                           (acc,elt) => acc + '\n' + elt
-                        }
-            } catch {
-               case e: NullPointerException => {
-                  println(e)
-                  ""
-               }
             }
          }
       }
+      resultFuture.flatMap(result => Future.reduce(result)(_ + '\n' + _))
    }
 
-   def reportAirports : Future[String] = {
+   def reportAirports() : Future[String] = {
       import com.sksamuel.elastic4s.searches.aggs.TermsOrder
       // "keyword" used to make a text field aggregatable in ElasticSearch
 
-      /*var x = getType(termsAggregation("Aggreg"))
-      println(x.decls.mkString("\n"))*/
       val agg = termsAggregation("Aggreg").field("iso_country.keyword")
       val agg2 = termsAggregation("Aggreg").field("iso_country.keyword").order(TermsOrder("_count"))
 
@@ -297,6 +152,38 @@ futurelist.flatMap(list => Future.reduce(list)(_ + '\n' + _))
       //bestFuture.zip(worstFuture) // Treat the result as a single future
       Future.reduce(List(bestFuture, worstFuture))(_ + "\n\n" + _)
    }
+
+   def reportTop10MostCommonRunwayLatitude(): Future[String] = {
+      val agg = termsAggregation("Aggreg").field("le_ident.keyword")
+
+      val commonLatitude = ElasticClient.client.execute {
+         search("runways"/"runways").aggregations(agg)
+      }
+      commonLatitude.map {
+         case Left(failure) => "Most common latitude not found " + failure.error
+         case Right(commonLat) => {
+            val startString = "\nTop 10 most common runway latitude:"
+            try {
+               commonLat.result
+                        .aggregations
+                        .data("Aggreg")
+                        .asInstanceOf[Map[String, List[Map[String, Any]]]]("buckets")
+                        .map(latitude => {
+                           "\t- " + latitude("key").toString + ": " + latitude("doc_count").toString
+                        }).foldLeft(startString){
+                           (acc,elt) => acc + '\n' + elt
+                        }
+            } catch {
+               case e: NullPointerException => {
+                  println(e)
+                  ""
+               }
+            }
+         }
+      }
+   }
+
+
 
    def getCountryNameByCode(countryCode: String) : Future[Option[String]] = {
       val searchCountry = ElasticClient.client.execute{

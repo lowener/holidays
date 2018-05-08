@@ -74,7 +74,6 @@ object Main {
             }*/
 
          }
-<<<<<<< HEAD
          else  if (queryOrReport == 2) {
             println("What kind of report do you want ?")
             println("1. Top 10 countries with highest and lowest number of airports?")
@@ -93,21 +92,7 @@ object Main {
                   Future{"Invalid answer"}
                }
             }
-            Await.result(resultString, Duration("25 seconds"))
-=======
-         else if (queryOrReport == 2){
-            val listReports = List(Elastic.reportAirports,
-                                   Elastic.reportTop10MostCommonRunwayLatitude,
-                                   Elastic.reportRunways)
-
-            try {
-               println("Report:")
-               // Await to not exit if it's not printed!
-               listReports.map(futureReport => Await.result(futureReport.map(println(_)), Duration("10 seconds")))
-            } catch {
-               case e: TimeoutException => println("Waited too long.\nExiting")
-            }
->>>>>>> [Report] Finished converting elastic calls to asynchronous
+            Await.result(resultString.map(println), Duration("25 seconds"))
          }
          else {
             println("Invalid answer")
