@@ -47,7 +47,9 @@ object Elastic {
             val res = airports.result.hits.hits.map(airport => {
                val airportMap = airport.sourceAsMap
                val runwaysByAirport = ElasticClient.client.execute {
-                  search("runways" / "runways").matchQuery("airport_ident", airportMap("ident")).aggregations(agg)
+                  search("runways" / "runways")
+                    .matchQuery("airport_ident", airportMap("ident"))
+                    .aggregations(agg)
                }
 
                runwaysByAirport.map {
@@ -58,11 +60,8 @@ object Elastic {
                             .data("Aggreg")
                             .asInstanceOf[Map[String, List[Map[String, String]]]]("buckets")
                             .map(surface => surface("key"))
-                            .distinct
-                            .filter(surface => { surface != "" })
                   }
                }
-               //
             })
             Future.reduce(res)(_:::_)
          }
@@ -73,12 +72,14 @@ object Elastic {
       println("Surfaces by country:")
 
       val resultFuture = getAllCountryNameAndCode(countryNumber).map {
-         case arrayFuture : Array[(String, String)] => arrayFuture.map{
+         case arrayFuture : Array[(String, String)] => arrayFuture.map {
             case (name: String, code: String) => {
-               getSurfacesByCountryCode(code).map(surface =>
-                  "\t- " + name + ": " + surface.mkString("[", ", ", "]")
+               getSurfacesByCountryCode(code).map(surfaces =>
+                  "\t- " + name + ": " + surfaces
+                                          .distinct
+                                          .filter(surface => { surface != "" })
+                                          .mkString("[", ", ", "]")
                )
-
             }
          }
       }
@@ -149,7 +150,6 @@ object Elastic {
             }
          }
       }
-      //bestFuture.zip(worstFuture) // Treat the result as a single future
       Future.reduce(List(bestFuture, worstFuture))(_ + "\n\n" + _)
    }
 
@@ -182,8 +182,6 @@ object Elastic {
          }
       }
    }
-
-
 
    def getCountryNameByCode(countryCode: String) : Future[Option[String]] = {
       val searchCountry = ElasticClient.client.execute{
