@@ -63,7 +63,7 @@ object Elastic {
                   }
                }
             })
-            Future.reduce(res)(_:::_)
+            Future.sequence(res.toList).map(_.flatten)
          }
       }
    }
