@@ -341,7 +341,7 @@ object csvToElastic {
          println("Importing " + csv.getName + " " + listJsonData.length + " lines...")
 
          // Split the list of Json in 6, since transmission of big chunks is expensive in ElasticSearch
-         listJsonData.grouped(listJsonData.length / 6 + 1).map(groupJson => {
+         listJsonData.grouped(listJsonData.length / 6 + 1).foreach(groupJson => {
             val createdEitherFuture = ElasticClient.client.execute{
                bulk ( // Bulk allow me to upload multiple json
                   groupJson.map(json => indexInto(csv.getName/csv.getName).doc(json._2) id json._1)
