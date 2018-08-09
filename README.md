@@ -1,5 +1,11 @@
 # Holidays
 
+## Description
+
+This projet is a CSV parser I had to realise in Scala for my courses at @epita.
+It will read the data, and register them in an ElasticSearch database.
+And you can do some query also! ;)
+
 ## Dependencies
 
 There are two dependencies:
